@@ -1,4 +1,4 @@
-"""Comandos e callbacks do bot do Telegram."""
+"""Telegram bot commands and callbacks."""
 
 import asyncio
 import logging
@@ -26,7 +26,7 @@ ALLOWED_USER_IDS = {
     int(x) for x in _allowed_ids_raw.split(',') if x.strip().isdigit()
 } if _allowed_ids_raw else set()
 
-CANCEL_BUTTON_ROW = [InlineKeyboardButton("Cancelar", callback_data="cancel")]
+CANCEL_BUTTON_ROW = [InlineKeyboardButton("Cancel", callback_data="cancel")]
 
 
 def _clear_pending(context: ContextTypes.DEFAULT_TYPE):
@@ -57,8 +57,8 @@ def _chunk_text(text, limit=_MESSAGE_LIMIT):
 
 def _format_theaters(day):
     lines = [
-        f"Sessões de {day['dayOfWeek']}, {day['dateFormatted']}: encontrei "
-        f"{len(day['theaters'])} cinema(s) com horários disponíveis.",
+        f"Showtimes for {day['dayOfWeek']}, {day['dateFormatted']}: found "
+        f"{len(day['theaters'])} theater(s) with available times.",
         "",
     ]
     for t in day['theaters']:
@@ -77,32 +77,33 @@ async def _require_allowed(update: Update) -> bool:
         return True
     if update.effective_message:
         await update.effective_message.reply_text(
-            "Este bot é de uso pessoal e você não está na lista de pessoas autorizadas, "
-            "então não posso continuar com esse pedido."
+            "This bot is for personal use and you're not on the list of authorized "
+            "users, so I can't continue with this request."
         )
     return False
 
 
 async def _resolve_movie(chat_id, context: ContextTypes.DEFAULT_TYPE, movie):
-    """Fluxo de busca: mostra as datas, ou oferece criar alerta se não houver nenhuma."""
+    """Search flow: shows the dates, or offers to create an alert if there are none."""
     context.chat_data['current_movie'] = movie
     await context.bot.send_message(
         chat_id,
-        f"Procurando as sessões de *{movie['title']}*. Isso pode levar alguns segundos, "
-        "porque preciso consultar o site do Ingresso.com diretamente.",
+        f"Looking up showtimes for *{movie['title']}*. This can take a few seconds, "
+        "since I need to query the Ingresso.com site directly.",
         parse_mode='Markdown',
     )
     dated = await asyncio.to_thread(find_sessions, movie['urlKey'])
 
     if not dated:
         keyboard = InlineKeyboardMarkup(
-            [[InlineKeyboardButton("Monitorar este filme", callback_data="alert_new")], CANCEL_BUTTON_ROW]
+            [[InlineKeyboardButton("Monitor this movie", callback_data="alert_new")], CANCEL_BUTTON_ROW]
         )
         await context.bot.send_message(
             chat_id,
-            f"Não encontrei nenhuma sessão disponível ainda para *{movie['title']}*. Isso costuma "
-            "significar que o filme ainda não estreou ou está em pré-venda. Se quiser, eu posso "
-            "ficar de olho e te avisar assim que as sessões abrirem.",
+            f"I couldn't find any showtimes for *{movie['title']}* yet. That usually "
+            "means the movie hasn't been released yet or is still in presale. If "
+            "you'd like, I can keep an eye on it and let you know as soon as "
+            "showtimes open.",
             parse_mode='Markdown',
             reply_markup=keyboard,
         )
@@ -116,15 +117,15 @@ async def _resolve_movie(chat_id, context: ContextTypes.DEFAULT_TYPE, movie):
     buttons.append(CANCEL_BUTTON_ROW)
     await context.bot.send_message(
         chat_id,
-        f"Encontrei sessões de *{movie['title']}* nestas datas. Escolha uma para eu te mostrar "
-        "os cinemas e horários disponíveis:",
+        f"I found showtimes for *{movie['title']}* on these dates. Pick one and "
+        "I'll show you the theaters and available times:",
         parse_mode='Markdown',
         reply_markup=InlineKeyboardMarkup(buttons),
     )
 
 
 async def _resolve_for_alert(chat_id, context: ContextTypes.DEFAULT_TYPE, movie):
-    """Fluxo de /alerta: cria o alerta se não houver sessão, ou mostra as datas se já houver."""
+    """/alert flow: creates the alert if there's no showtime yet, or shows the dates if there already is."""
     dated = await asyncio.to_thread(find_sessions, movie['urlKey'])
 
     if dated:
@@ -136,8 +137,8 @@ async def _resolve_for_alert(chat_id, context: ContextTypes.DEFAULT_TYPE, movie)
         buttons.append(CANCEL_BUTTON_ROW)
         await context.bot.send_message(
             chat_id,
-            f"*{movie['title']}* já tem sessões disponíveis, então não faz sentido criar um "
-            "alerta agora. Escolha uma data abaixo para ver onde assistir:",
+            f"*{movie['title']}* already has showtimes available, so there's no "
+            "point creating an alert now. Pick a date below to see where to watch it:",
             parse_mode='Markdown',
             reply_markup=InlineKeyboardMarkup(buttons),
         )
@@ -147,8 +148,8 @@ async def _resolve_for_alert(chat_id, context: ContextTypes.DEFAULT_TYPE, movie)
     if existing:
         await context.bot.send_message(
             chat_id,
-            f"Você já tem um alerta em andamento para *{movie['title']}*. Assim que abrirem "
-            "sessões, eu aviso por aqui — não precisa criar outro.",
+            f"You already have an alert in progress for *{movie['title']}*. As soon "
+            "as showtimes open, I'll let you know here — no need to create another one.",
             parse_mode='Markdown',
         )
         return
@@ -156,8 +157,8 @@ async def _resolve_for_alert(chat_id, context: ContextTypes.DEFAULT_TYPE, movie)
     await storage.add_alert(chat_id, movie['title'], movie['urlKey'])
     await context.bot.send_message(
         chat_id,
-        f"Alerta criado para *{movie['title']}*. Vou verificar periodicamente e, assim que "
-        "houver sessões disponíveis, você recebe um aviso aqui mesmo.",
+        f"Alert created for *{movie['title']}*. I'll check periodically, and as "
+        "soon as showtimes are available, you'll get a notification right here.",
         parse_mode='Markdown',
     )
 
@@ -169,8 +170,8 @@ async def _search_flow(update: Update, context: ContextTypes.DEFAULT_TYPE, phras
     if not matches:
         await context.bot.send_message(
             chat_id,
-            "Não encontrei nenhum filme com esse nome no Ingresso.com. Confira se digitou "
-            "certo e tente novamente.",
+            "I couldn't find any movie with that name on Ingresso.com. Double-check "
+            "the spelling and try again.",
         )
         return
 
@@ -191,66 +192,67 @@ async def _search_flow(update: Update, context: ContextTypes.DEFAULT_TYPE, phras
     buttons.append(CANCEL_BUTTON_ROW)
     await context.bot.send_message(
         chat_id,
-        "Encontrei mais de um filme com esse nome. Escolha qual deles você quis dizer:",
+        "I found more than one movie with that name. Pick the one you meant:",
         reply_markup=InlineKeyboardMarkup(buttons),
     )
 
 
 HELP_TEXT = (
-    "Aqui está o que eu sei fazer:\n\n"
-    "Manda o nome de um filme em qualquer mensagem, sem precisar de comando nenhum, e eu "
-    "procuro as sessões disponíveis pra você.\n\n"
-    "/alerta <nome do filme> — use quando o filme ainda não tiver nenhuma sessão aberta. Eu "
-    "guardo esse pedido e fico verificando periodicamente; assim que abrir, aviso você por "
-    "aqui.\n\n"
-    "/alertas — mostra todos os alertas que você tem em andamento no momento, com a opção de "
-    "cancelar cada um.\n\n"
-    "/help — mostra esta mensagem de novo, caso precise se lembrar dos comandos.\n\n"
-    "Sempre que eu te mostrar uma lista de filmes ou de datas pra escolher, vai ter um botão "
-    "\"Cancelar\" nela — use se mudar de ideia. Também dá pra simplesmente ignorar e mandar "
-    "uma busca nova quando quiser; a anterior é substituída automaticamente."
+    "Here's what I can do:\n\n"
+    "Send me a movie name in any message, no command needed, and I'll look up the "
+    "available showtimes for you.\n\n"
+    "/alert <movie name> — use this when the movie doesn't have any showtime open "
+    "yet. I'll save that request and keep checking periodically; as soon as it "
+    "opens, I'll let you know here.\n\n"
+    "/alerts — shows every alert you currently have in progress, with the option "
+    "to cancel each one.\n\n"
+    "/help — shows this message again, in case you need a reminder of the commands.\n\n"
+    "Whenever I show you a list of movies or dates to pick from, there'll be a "
+    "\"Cancel\" button on it — use it if you change your mind. You can also just "
+    "ignore it and send a new search whenever you want; the previous one is "
+    "replaced automatically."
 )
 
 
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.effective_message.reply_text(f"Olá, tudo bem? {HELP_TEXT}")
+    await update.effective_message.reply_text(f"Hello! {HELP_TEXT}")
 
 
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.effective_message.reply_text(HELP_TEXT)
 
 
-async def cmd_alerta(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def cmd_alert(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await _require_allowed(update):
         return
     phrase = ' '.join(context.args)
     if not phrase:
         await update.effective_message.reply_text(
-            "Pra criar um alerta, me diga também o nome do filme, assim: "
-            "/alerta nome do filme"
+            "To create an alert, tell me the movie name too, like this: "
+            "/alert movie name"
         )
         return
     await _search_flow(update, context, phrase, intent='alert')
 
 
-async def cmd_alertas(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def cmd_alerts(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await _require_allowed(update):
         return
     chat_id = update.effective_chat.id
     pending = await storage.list_pending(chat_id=chat_id)
     if not pending:
         await update.effective_message.reply_text(
-            "Você não tem nenhum alerta em andamento no momento. Quando quiser monitorar um "
-            "filme que ainda não tem sessão, use /alerta <nome do filme>."
+            "You don't have any alerts in progress right now. When you want to "
+            "monitor a movie that doesn't have showtimes yet, use /alert <movie name>."
         )
         return
     for alert in pending:
         keyboard = InlineKeyboardMarkup(
-            [[InlineKeyboardButton("Cancelar este alerta", callback_data=f"alert_cancel:{alert['id']}")]]
+            [[InlineKeyboardButton("Cancel this alert", callback_data=f"alert_cancel:{alert['id']}")]]
         )
         await update.effective_message.reply_text(
-            f"Alerta ativo para {alert['movie_title']}. Assim que houver sessões disponíveis, "
-            "aviso você por aqui.",
+            f"Active alert for {alert['movie_title']}. As soon as showtimes are "
+            "available, I'll let you know here.",
             reply_markup=keyboard,
         )
 
@@ -268,8 +270,8 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not query.from_user or not _is_allowed(query.from_user.id):
         await query.edit_message_text(
-            "Este bot é de uso pessoal e você não está na lista de pessoas autorizadas, "
-            "então não posso continuar com esse pedido."
+            "This bot is for personal use and you're not on the list of authorized "
+            "users, so I can't continue with this request."
         )
         return
 
@@ -278,20 +280,20 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if data == 'cancel':
         _clear_pending(context)
-        await query.edit_message_text("Tudo bem, cancelei essa busca. Quando quiser, é só mandar o nome de outro filme.")
+        await query.edit_message_text("No problem, I canceled that search. Whenever you want, just send another movie name.")
 
     elif data.startswith('movie:'):
         idx = int(data.split(':', 1)[1])
         candidates = context.chat_data.get('pending_movies') or []
         if idx >= len(candidates):
             await query.edit_message_text(
-                "Essa lista de filmes não está mais válida. Manda o nome do filme de novo "
-                "que eu busco tudo outra vez."
+                "That movie list isn't valid anymore. Send the movie name again "
+                "and I'll search for everything once more."
             )
             return
         movie = candidates[idx]
         intent = context.chat_data.get('pending_intent', 'search')
-        await query.edit_message_text(f"Você escolheu {movie['title']}.")
+        await query.edit_message_text(f"You picked {movie['title']}.")
         if intent == 'alert':
             await _resolve_for_alert(chat_id, context, movie)
         else:
@@ -302,18 +304,18 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         dated = context.chat_data.get('current_dates') or []
         if idx >= len(dated):
             await query.edit_message_text(
-                "Essa lista de datas não está mais válida. Manda o nome do filme de novo "
-                "pra eu buscar as sessões atualizadas."
+                "That date list isn't valid anymore. Send the movie name again "
+                "so I can fetch the latest showtimes."
             )
             return
         value, weekday, url = dated[idx]
-        await query.edit_message_text(f"Buscando os cinemas e horários de {weekday}, {value}...")
+        await query.edit_message_text(f"Looking up theaters and showtimes for {weekday}, {value}...")
         day = await asyncio.to_thread(fetch_theaters, url)
         if not day:
             await context.bot.send_message(
                 chat_id,
-                "Parece que as sessões dessa data esgotaram ou não estão mais disponíveis. "
-                "Tente escolher outra data ou busque o filme novamente.",
+                "Looks like showtimes for that date sold out or are no longer "
+                "available. Try picking another date or search for the movie again.",
             )
             return
         text = _format_theaters(day)
@@ -324,22 +326,22 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         movie = context.chat_data.get('current_movie')
         if not movie:
             await query.edit_message_text(
-                "Não lembro mais qual filme você estava vendo. Manda o nome de novo que eu "
-                "já pergunto se você quer criar o alerta."
+                "I don't remember which movie you were looking at anymore. Send "
+                "the name again and I'll ask if you want to create the alert."
             )
             return
         existing = await storage.find_pending_by_url_key(chat_id, movie['urlKey'])
         if existing:
             await query.edit_message_text(
-                f"Você já tem um alerta em andamento para *{movie['title']}*. Assim que "
-                "abrirem sessões, eu aviso por aqui.",
+                f"You already have an alert in progress for *{movie['title']}*. As "
+                "soon as showtimes open, I'll let you know here.",
                 parse_mode='Markdown',
             )
             return
         await storage.add_alert(chat_id, movie['title'], movie['urlKey'])
         await query.edit_message_text(
-            f"Alerta criado para *{movie['title']}*. Vou verificar periodicamente e, assim "
-            "que houver sessões disponíveis, você recebe um aviso aqui mesmo.",
+            f"Alert created for *{movie['title']}*. I'll check periodically, and "
+            "as soon as showtimes are available, you'll get a notification right here.",
             parse_mode='Markdown',
         )
 
@@ -347,14 +349,15 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         alert_id = data.split(':', 1)[1]
         await storage.cancel_alert(alert_id)
         await query.edit_message_text(
-            "Alerta cancelado. Se mudar de ideia, é só criar de novo com /alerta <nome do filme>."
+            "Alert canceled. If you change your mind, just create a new one with "
+            "/alert <movie name>."
         )
 
 
 def register(application: Application):
     application.add_handler(CommandHandler('start', cmd_start))
     application.add_handler(CommandHandler('help', cmd_help))
-    application.add_handler(CommandHandler('alerta', cmd_alerta))
-    application.add_handler(CommandHandler('alertas', cmd_alertas))
+    application.add_handler(CommandHandler('alert', cmd_alert))
+    application.add_handler(CommandHandler('alerts', cmd_alerts))
     application.add_handler(CallbackQueryHandler(handle_callback))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))

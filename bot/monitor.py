@@ -1,4 +1,4 @@
-"""Job periódico que checa os alertas pendentes e avisa quando abrir sessão."""
+"""Periodic job that checks pending alerts and notifies when showtimes open."""
 
 import asyncio
 import logging
@@ -13,17 +13,17 @@ logger = logging.getLogger(__name__)
 
 def _format_dates_message(movie_title, dated):
     lines = [
-        f"Boas notícias: abriram sessões para *{movie_title}*. Este alerta foi concluído e "
-        "não vou mais verificar esse filme.",
+        f"Good news: showtimes just opened for *{movie_title}*. This alert is now "
+        "complete and I won't check this movie anymore.",
         "",
-        "Datas disponíveis:",
+        "Available dates:",
     ]
     for value, weekday, _ in dated:
         lines.append(f"- {weekday}, {value}")
     lines.append("")
     lines.append(
-        "Manda o nome do filme de novo por aqui quando quiser escolher uma data e ver os "
-        "cinemas e horários."
+        "Send the movie name again here whenever you want to pick a date and see "
+        "the theaters and showtimes."
     )
     return "\n".join(lines)
 
@@ -34,7 +34,7 @@ async def check_alerts(context: ContextTypes.DEFAULT_TYPE):
         try:
             dated = await asyncio.to_thread(find_sessions, alert['url_key'])
         except Exception:
-            logger.exception("Falha ao checar alerta %s (%s)", alert['id'], alert['url_key'])
+            logger.exception("Failed to check alert %s (%s)", alert['id'], alert['url_key'])
             continue
 
         if not dated:
@@ -47,7 +47,7 @@ async def check_alerts(context: ContextTypes.DEFAULT_TYPE):
                 parse_mode='Markdown',
             )
         except Exception:
-            logger.exception("Falha ao enviar aviso do alerta %s", alert['id'])
+            logger.exception("Failed to send notification for alert %s", alert['id'])
             continue
 
         await storage.resolve_alert(alert['id'])

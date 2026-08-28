@@ -1,4 +1,4 @@
-"""Persistência simples dos alertas de monitoramento em um arquivo JSON."""
+"""Simple JSON-file-based persistence for monitoring alerts."""
 
 import asyncio
 import json

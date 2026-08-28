@@ -1,7 +1,6 @@
-"""Busca de filmes e sessões no Ingresso.com.
+"""Movie and showtime search on Ingresso.com.
 
-Fonte de verdade compartilhada entre o bot do Telegram e o notebook de teste
-(teste.ipynb importa daqui em vez de duplicar a lógica).
+Single source of truth for the search logic, used by the Telegram bot.
 """
 
 import asyncio
@@ -17,7 +16,7 @@ HEADERS = {
     'Referer': 'https://www.ingresso.com/',
 }
 
-DIAS_SEMANA = ['segunda-feira', 'terça-feira', 'quarta-feira', 'quinta-feira', 'sexta-feira', 'sábado', 'domingo']
+WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
 
 
 def search_movie(query, limit=10):
@@ -31,7 +30,7 @@ def search_movie(query, limit=10):
 
 
 def find_movies(phrase):
-    """Retorna os filmes cujo título contém todas as palavras da frase."""
+    """Returns the movies whose title contains every word in the phrase."""
     words = phrase.lower().split()
     if not words:
         return []
@@ -40,10 +39,10 @@ def find_movies(phrase):
 
 
 def _get_sessions_sync(url_key, city, result_holder):
-    # No Windows, o Jupyter/asyncio padrão usa a policy Selector (não
-    # suporta subprocessos). Trocamos a policy desta thread para Proactor
-    # ANTES de entrar no sync_playwright, que cria seu próprio loop via
-    # asyncio.new_event_loop() usando a policy corrente.
+    # On Windows, Jupyter/asyncio default to the Selector policy (which
+    # doesn't support subprocesses). We switch this thread's policy to
+    # Proactor BEFORE entering sync_playwright, which creates its own loop
+    # via asyncio.new_event_loop() using the current policy.
     asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
     from playwright.sync_api import sync_playwright
@@ -61,9 +60,9 @@ def _get_sessions_sync(url_key, city, result_holder):
         page.goto(f'https://www.ingresso.com/filme/{url_key}?city={city}')
         page.wait_for_timeout(2500)
 
-        # O site tem um <select aria-label="Datas"> com as datas disponíveis.
-        # A resposta da API só é disparada quando a data selecionada muda,
-        # então percorremos todas as opções pra capturar as sessões de cada dia.
+        # The site has a <select aria-label="Datas"> with the available dates.
+        # The API response only fires when the selected date changes, so we
+        # go through every option to capture each day's showtimes.
         date_select = page.locator('select[aria-label="Datas"]')
         if date_select.count() > 0:
             date_values = [
@@ -81,7 +80,7 @@ def _get_sessions_sync(url_key, city, result_holder):
 
 
 def get_sessions(url_key, city='sao-paulo'):
-    """Abre o filme no site e captura as URLs de sessão via Playwright (bloqueante)."""
+    """Opens the movie page and captures showtime URLs via Playwright (blocking)."""
     result = {}
     t = threading.Thread(target=_get_sessions_sync, args=(url_key, city, result))
     t.start()
@@ -90,7 +89,7 @@ def get_sessions(url_key, city='sao-paulo'):
 
 
 def extract_dates(urls):
-    """Extrai (data, url) de cada URL de sessão capturada."""
+    """Extracts (date, url) from each captured showtime URL."""
     result = []
     for url in urls:
         qs = parse_qs(urlparse(url).query)
@@ -111,8 +110,8 @@ def _parse_date(value):
 
 
 def filter_and_sort_dates(dated_urls):
-    """Remove duplicadas, mantém só datas >= hoje e ordena crescente.
-    Retorna lista de (data, dia_da_semana, url)."""
+    """Deduplicates, keeps only dates >= today and sorts ascending.
+    Returns a list of (date, weekday, url)."""
     today = date.today()
     seen = set()
     parsed = []
@@ -124,20 +123,20 @@ def filter_and_sort_dates(dated_urls):
             seen.add(value)
             parsed.append((d, value, url))
     parsed.sort(key=lambda item: item[0])
-    return [(value, DIAS_SEMANA[d.weekday()], url) for d, value, url in parsed]
+    return [(value, WEEKDAYS[d.weekday()], url) for d, value, url in parsed]
 
 
 def find_sessions(url_key, city='sao-paulo'):
-    """Encadeia get_sessions + extract_dates + filter_and_sort_dates.
+    """Chains get_sessions + extract_dates + filter_and_sort_dates.
 
-    Retorna lista de (data, dia_da_semana, url), já filtrada e ordenada.
+    Returns a list of (date, weekday, url), already filtered and sorted.
     """
     urls = get_sessions(url_key, city=city)
     return filter_and_sort_dates(extract_dates(urls))
 
 
 def fetch_theaters(url):
-    """Busca a API da data escolhida e retorna a estrutura do dia (ou None)."""
+    """Queries the API for the chosen date and returns the day's data structure (or None)."""
     r = requests.get(url, headers=HEADERS)
     if r.status_code == 204 or not r.text.strip():
         return None

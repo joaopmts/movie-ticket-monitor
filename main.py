@@ -14,17 +14,17 @@ logging.basicConfig(
     format='%(asctime)s %(levelname)s %(name)s: %(message)s',
     level=logging.INFO,
 )
-# O httpx loga a URL completa de cada request, e a URL da API do Telegram
-# inclui o token do bot no próprio caminho — deixar isso em INFO vaza o
-# token pros logs (docker compose logs, arquivos de log, etc.).
+# httpx logs the full URL of every request, and the Telegram API URL includes
+# the bot token right in the path — leaving this at INFO leaks the token into
+# the logs (docker compose logs, log files, etc.).
 logging.getLogger('httpx').setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 
 BOT_COMMANDS = [
-    BotCommand('alerta', 'Cria um alerta pra um filme (ex: /alerta duna 3)'),
-    BotCommand('alertas', 'Lista seus alertas ativos'),
-    BotCommand('help', 'Mostra os comandos disponíveis'),
-    BotCommand('start', 'Mensagem de boas-vindas'),
+    BotCommand('alert', 'Create an alert for a movie (e.g. /alert dune 3)'),
+    BotCommand('alerts', 'List your active alerts'),
+    BotCommand('help', 'Show the available commands'),
+    BotCommand('start', 'Welcome message'),
 ]
 
 
@@ -35,7 +35,7 @@ async def _post_init(application: Application):
 def main():
     token = os.environ.get('TELEGRAM_BOT_TOKEN')
     if not token:
-        raise SystemExit('TELEGRAM_BOT_TOKEN não configurado (veja .env.example).')
+        raise SystemExit('TELEGRAM_BOT_TOKEN is not set (see .env.example).')
 
     interval_minutes = float(os.environ.get('ALERT_CHECK_INTERVAL_MINUTES', '30'))
 
@@ -43,7 +43,7 @@ def main():
     register(application)
     application.job_queue.run_repeating(check_alerts, interval=interval_minutes * 60, first=10)
 
-    logger.info('Bot iniciado, checando alertas a cada %s minuto(s).', interval_minutes)
+    logger.info('Bot started, checking alerts every %s minute(s).', interval_minutes)
     application.run_polling()
 
 

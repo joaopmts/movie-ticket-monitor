@@ -22,7 +22,7 @@ that happens.
 Send the bot a movie name and it returns the dates with showtimes (from
 today onward, in ascending order); picking a date lists the theaters and
 showtimes. If the movie doesn't have any showtime yet (presale or not
-released yet), you can ask for `/alerta <movie>` — the bot stores that
+released yet), you can ask for `/alert <movie>` — the bot stores that
 request and keeps checking in the background, notifying you in the chat as
 soon as it opens.
 
@@ -56,7 +56,7 @@ bot/handlers.py  ---------------> bot/ingresso.py  ---------> Ingresso.com API
   requests, the showtime URLs for each available date. It has no dependency
   on Telegram at all.
 - **`bot/handlers.py`** — Telegram commands and buttons (`/start`, `/help`,
-  `/alerta`, `/alertas`, free text, button taps). This is the layer that
+  `/alert`, `/alerts`, free text, button taps). This is the layer that
   decides *what* the bot replies and formats the messages; it knows nothing
   about how the search is done internally.
 - **`bot/storage.py`** — simple alert persistence in `data/alerts.json`, with
@@ -69,7 +69,7 @@ bot/handlers.py  ---------------> bot/ingresso.py  ---------> Ingresso.com API
 
 ## How it works (flows)
 
-**Search (free text, or a date that already has showtimes in `/alerta`)**
+**Search (free text, or a date that already has showtimes in `/alert`)**
 1. User sends the movie name.
 2. `find_movies()` searches Ingresso.com's API and filters titles that match
    every word typed. If there's more than one result, the bot shows buttons
@@ -81,7 +81,7 @@ bot/handlers.py  ---------------> bot/ingresso.py  ---------> Ingresso.com API
    `fetch_theaters()` queries that date's API and the bot lists theater,
    room, showtime type and time.
 
-**Alert (`/alerta <movie>`)**
+**Alert (`/alert <movie>`)**
 1. Same search as above. If a showtime already exists, the bot shows the
    dates (it won't create a redundant alert).
 2. If there's no showtime yet, the request is saved to `data/alerts.json`
@@ -267,9 +267,9 @@ Other things you can adjust directly in the code, if needed:
 ## Bot commands
 
 - Send a movie name (free text) — searches for showtimes.
-- `/alerta <movie>` — creates a monitoring alert (or shows the dates if the
+- `/alert <movie>` — creates a monitoring alert (or shows the dates if the
   movie already has showtimes).
-- `/alertas` — lists your active alerts, with a button to cancel each one.
+- `/alerts` — lists your active alerts, with a button to cancel each one.
 - `/help` — shows the list of commands.
 - `/start` — welcome message.
 
