@@ -23,6 +23,7 @@ logger = logging.getLogger(__name__)
 BOT_COMMANDS = [
     BotCommand('alert', 'Create an alert for a movie (e.g. /alert dune 3)'),
     BotCommand('alerts', 'List your active alerts'),
+    BotCommand('city', 'Set which city to search in (default: São Paulo)'),
     BotCommand('help', 'Show the available commands'),
     BotCommand('start', 'Welcome message'),
 ]

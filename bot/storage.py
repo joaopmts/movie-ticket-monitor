@@ -8,8 +8,13 @@ from datetime import datetime, timezone
 
 DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'data')
 ALERTS_PATH = os.path.join(DATA_DIR, 'alerts.json')
+PREFERENCES_PATH = os.path.join(DATA_DIR, 'preferences.json')
+
+DEFAULT_CITY_URL_KEY = 'sao-paulo'
+DEFAULT_CITY_LABEL = 'São Paulo - SP'
 
 _lock = asyncio.Lock()
+_prefs_lock = asyncio.Lock()
 
 
 def _load():
@@ -69,3 +74,33 @@ async def cancel_alert(alert_id):
 async def find_pending_by_url_key(chat_id, url_key):
     pending = await list_pending(chat_id=chat_id)
     return next((a for a in pending if a['url_key'] == url_key), None)
+
+
+def _load_prefs():
+    if not os.path.exists(PREFERENCES_PATH):
+        return {}
+    with open(PREFERENCES_PATH, 'r', encoding='utf-8') as f:
+        return json.load(f)
+
+
+def _save_prefs(prefs):
+    os.makedirs(DATA_DIR, exist_ok=True)
+    with open(PREFERENCES_PATH, 'w', encoding='utf-8') as f:
+        json.dump(prefs, f, ensure_ascii=False, indent=2)
+
+
+async def set_city(chat_id, url_key, label):
+    async with _prefs_lock:
+        prefs = _load_prefs()
+        prefs[str(chat_id)] = {'city_url_key': url_key, 'city_label': label}
+        _save_prefs(prefs)
+
+
+async def get_city(chat_id):
+    """Returns (city_url_key, city_label) for the chat, or the default city."""
+    async with _prefs_lock:
+        prefs = _load_prefs()
+    entry = prefs.get(str(chat_id))
+    if entry:
+        return entry['city_url_key'], entry['city_label']
+    return DEFAULT_CITY_URL_KEY, DEFAULT_CITY_LABEL

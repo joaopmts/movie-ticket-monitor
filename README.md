@@ -59,8 +59,9 @@ bot/handlers.py  ---------------> bot/ingresso.py  ---------> Ingresso.com API
   `/alert`, `/alerts`, free text, button taps). This is the layer that
   decides *what* the bot replies and formats the messages; it knows nothing
   about how the search is done internally.
-- **`bot/storage.py`** — simple alert persistence in `data/alerts.json`, with
-  a lock (`asyncio.Lock`) to avoid a race between the monitoring job and the
+- **`bot/storage.py`** — simple persistence in `data/alerts.json` (alerts)
+  and `data/preferences.json` (each chat's chosen city), with a lock
+  (`asyncio.Lock`) to avoid a race between the monitoring job and the
   user's commands, since both run in the same process.
 - **`bot/monitor.py`** — runs periodically (configurable interval) and, for
   each pending alert, checks whether a showtime is already available. If so,
@@ -97,14 +98,15 @@ bot/handlers.py  ---------------> bot/ingresso.py  ---------> Ingresso.com API
 movie-ticket-monitor/
 ├── bot/
 │   ├── __init__.py
-│   ├── ingresso.py       # movie/showtime search (Playwright + public API)
-│   ├── storage.py        # alert persistence (data/alerts.json)
+│   ├── ingresso.py       # movie/showtime/city search (Playwright + public API)
+│   ├── storage.py        # persistence (data/alerts.json, data/preferences.json)
 │   ├── monitor.py        # periodic job that checks pending alerts
 │   └── handlers.py       # Telegram commands and buttons
 ├── data/
-│   ├── .gitkeep           # keeps the folder tracked even when empty
-│   └── alerts.json         # created at runtime (NOT version-controlled)
-├── main.py                  # bot entry point
+│   ├── .gitkeep              # keeps the folder tracked even when empty
+│   ├── alerts.json            # created at runtime (NOT version-controlled)
+│   └── preferences.json         # created at runtime (NOT version-controlled)
+├── main.py                        # bot entry point
 ├── requirements.txt           # Python dependencies
 ├── Dockerfile                   # bot image
 ├── docker-compose.yml             # orchestrates the container + data volume
@@ -156,6 +158,7 @@ it's never shared and never pushed to the repository.
 |---|---|---|
 | `.env` | Holds the bot token — whoever has this file controls the bot | Copy `.env.example` and fill it in (see the step-by-step below) |
 | `data/alerts.json` | Auto-generated with each installation's alerts; doesn't make sense to share across different environments | Created automatically the first time an alert is saved |
+| `data/preferences.json` | Auto-generated with each chat's chosen city | Created automatically the first time someone uses `/city` |
 | `__pycache__/`, `*.pyc` | Compiled Python bytecode, specific to each machine | Generated automatically when running |
 | `.venv/`, `venv/` | Local Python virtual environment | Created by you if you choose to use `venv` |
 
@@ -255,12 +258,10 @@ you'd rather configure them directly in `docker-compose.yml`):
 | `TELEGRAM_ALLOWED_USER_IDS` | Telegram user IDs authorized to use the bot, comma-separated. **If left empty, anyone who finds the bot can use it** (each search spins up a headless Chromium, so this has a resource cost) | *(empty = no restriction)* | `383108252` or `383108252,111222333` |
 | `ALERT_CHECK_INTERVAL_MINUTES` | How often (in minutes) the alert job checks whether new showtimes have opened | `30` | `10` (more frequent checks) |
 
-Other things you can adjust directly in the code, if needed:
+The search city is set per chat with `/city` (see below), stored in
+`data/preferences.json`, and defaults to São Paulo - SP if never set. Other
+things you can adjust directly in the code, if needed:
 
-- **Search city**: `get_sessions()`/`find_sessions()` in `bot/ingresso.py`
-  take `city='sao-paulo'` as the default — it's the city slug used in
-  Ingresso.com's URL. For a different city, change that value (or expose it
-  as a command parameter, if you want to evolve the bot further).
 - **Movie search result limit**: `search_movie(query, limit=10)` in
   `bot/ingresso.py`.
 
@@ -270,6 +271,8 @@ Other things you can adjust directly in the code, if needed:
 - `/alert <movie>` — creates a monitoring alert (or shows the dates if the
   movie already has showtimes).
 - `/alerts` — lists your active alerts, with a button to cancel each one.
+- `/city <city name>` — sets which city to search in (defaults to São Paulo
+  - SP). Send `/city` with no name to see your current city.
 - `/help` — shows the list of commands.
 - `/start` — welcome message.
 

@@ -32,7 +32,8 @@ async def check_alerts(context: ContextTypes.DEFAULT_TYPE):
     pending = await storage.list_pending()
     for alert in pending:
         try:
-            dated = await asyncio.to_thread(find_sessions, alert['url_key'])
+            city_url_key, _ = await storage.get_city(alert['chat_id'])
+            dated = await asyncio.to_thread(find_sessions, alert['url_key'], city_url_key)
         except Exception:
             logger.exception("Failed to check alert %s (%s)", alert['id'], alert['url_key'])
             continue

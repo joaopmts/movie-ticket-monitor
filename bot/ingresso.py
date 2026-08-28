@@ -5,6 +5,7 @@ Single source of truth for the search logic, used by the Telegram bot.
 
 import asyncio
 import threading
+import unicodedata
 from datetime import datetime, date
 from urllib.parse import urlparse, parse_qs
 
@@ -36,6 +37,30 @@ def find_movies(phrase):
         return []
     results = search_movie(words[0])
     return [m for m in results if all(w in m['title'].lower() for w in words)]
+
+
+def _normalize(text):
+    text = unicodedata.normalize('NFKD', text)
+    return ''.join(c for c in text if not unicodedata.combining(c)).lower()
+
+
+def list_cities():
+    """Returns every city Ingresso.com operates in, as {name, uf, urlKey}."""
+    r = requests.get('https://api-content.ingresso.com/v0/states', headers=HEADERS)
+    r.raise_for_status()
+    cities = []
+    for state in r.json():
+        for city in state.get('cities', []):
+            cities.append({'name': city['name'], 'uf': city['uf'], 'urlKey': city['urlKey']})
+    return cities
+
+
+def find_cities(phrase):
+    """Returns the cities whose name contains every word in the phrase (accent-insensitive)."""
+    words = _normalize(phrase).split()
+    if not words:
+        return []
+    return [c for c in list_cities() if all(w in _normalize(c['name']) for w in words)]
 
 
 def _get_sessions_sync(url_key, city, result_holder):

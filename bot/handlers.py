@@ -15,7 +15,7 @@ from telegram.ext import (
 )
 
 from . import storage
-from .ingresso import fetch_theaters, find_movies, find_sessions
+from .ingresso import fetch_theaters, find_cities, find_movies, find_sessions
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +30,7 @@ CANCEL_BUTTON_ROW = [InlineKeyboardButton("Cancel", callback_data="cancel")]
 
 
 def _clear_pending(context: ContextTypes.DEFAULT_TYPE):
-    for key in ('pending_movies', 'pending_intent', 'current_dates', 'current_movie'):
+    for key in ('pending_movies', 'pending_intent', 'current_dates', 'current_movie', 'pending_cities'):
         context.chat_data.pop(key, None)
 
 
@@ -86,13 +86,14 @@ async def _require_allowed(update: Update) -> bool:
 async def _resolve_movie(chat_id, context: ContextTypes.DEFAULT_TYPE, movie):
     """Search flow: shows the dates, or offers to create an alert if there are none."""
     context.chat_data['current_movie'] = movie
+    city_url_key, city_label = await storage.get_city(chat_id)
     await context.bot.send_message(
         chat_id,
-        f"Looking up showtimes for *{movie['title']}*. This can take a few seconds, "
-        "since I need to query the Ingresso.com site directly.",
+        f"Looking up showtimes for *{movie['title']}* in {city_label}. This can "
+        "take a few seconds, since I need to query the Ingresso.com site directly.",
         parse_mode='Markdown',
     )
-    dated = await asyncio.to_thread(find_sessions, movie['urlKey'])
+    dated = await asyncio.to_thread(find_sessions, movie['urlKey'], city_url_key)
 
     if not dated:
         keyboard = InlineKeyboardMarkup(
@@ -100,10 +101,10 @@ async def _resolve_movie(chat_id, context: ContextTypes.DEFAULT_TYPE, movie):
         )
         await context.bot.send_message(
             chat_id,
-            f"I couldn't find any showtimes for *{movie['title']}* yet. That usually "
-            "means the movie hasn't been released yet or is still in presale. If "
-            "you'd like, I can keep an eye on it and let you know as soon as "
-            "showtimes open.",
+            f"I couldn't find any showtimes for *{movie['title']}* in {city_label} "
+            "yet. That usually means the movie hasn't been released yet or is "
+            "still in presale. If you'd like, I can keep an eye on it and let you "
+            "know as soon as showtimes open.",
             parse_mode='Markdown',
             reply_markup=keyboard,
         )
@@ -126,7 +127,8 @@ async def _resolve_movie(chat_id, context: ContextTypes.DEFAULT_TYPE, movie):
 
 async def _resolve_for_alert(chat_id, context: ContextTypes.DEFAULT_TYPE, movie):
     """/alert flow: creates the alert if there's no showtime yet, or shows the dates if there already is."""
-    dated = await asyncio.to_thread(find_sessions, movie['urlKey'])
+    city_url_key, city_label = await storage.get_city(chat_id)
+    dated = await asyncio.to_thread(find_sessions, movie['urlKey'], city_url_key)
 
     if dated:
         context.chat_data['current_dates'] = dated
@@ -137,8 +139,9 @@ async def _resolve_for_alert(chat_id, context: ContextTypes.DEFAULT_TYPE, movie)
         buttons.append(CANCEL_BUTTON_ROW)
         await context.bot.send_message(
             chat_id,
-            f"*{movie['title']}* already has showtimes available, so there's no "
-            "point creating an alert now. Pick a date below to see where to watch it:",
+            f"*{movie['title']}* already has showtimes available in {city_label}, "
+            "so there's no point creating an alert now. Pick a date below to see "
+            "where to watch it:",
             parse_mode='Markdown',
             reply_markup=InlineKeyboardMarkup(buttons),
         )
@@ -157,8 +160,9 @@ async def _resolve_for_alert(chat_id, context: ContextTypes.DEFAULT_TYPE, movie)
     await storage.add_alert(chat_id, movie['title'], movie['urlKey'])
     await context.bot.send_message(
         chat_id,
-        f"Alert created for *{movie['title']}*. I'll check periodically, and as "
-        "soon as showtimes are available, you'll get a notification right here.",
+        f"Alert created for *{movie['title']}* in {city_label}. I'll check "
+        "periodically, and as soon as showtimes are available, you'll get a "
+        "notification right here.",
         parse_mode='Markdown',
     )
 
@@ -206,10 +210,12 @@ HELP_TEXT = (
     "opens, I'll let you know here.\n\n"
     "/alerts — shows every alert you currently have in progress, with the option "
     "to cancel each one.\n\n"
+    "/city <city name> — sets which city I search in (defaults to São Paulo - SP). "
+    "Send /city with no name to see your current city.\n\n"
     "/help — shows this message again, in case you need a reminder of the commands.\n\n"
-    "Whenever I show you a list of movies or dates to pick from, there'll be a "
-    "\"Cancel\" button on it — use it if you change your mind. You can also just "
-    "ignore it and send a new search whenever you want; the previous one is "
+    "Whenever I show you a list of movies, cities, or dates to pick from, there'll "
+    "be a \"Cancel\" button on it — use it if you change your mind. You can also "
+    "just ignore it and send a new search whenever you want; the previous one is "
     "replaced automatically."
 )
 
@@ -255,6 +261,48 @@ async def cmd_alerts(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "available, I'll let you know here.",
             reply_markup=keyboard,
         )
+
+
+async def cmd_city(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await _require_allowed(update):
+        return
+    chat_id = update.effective_chat.id
+    phrase = ' '.join(context.args)
+
+    if not phrase:
+        _, city_label = await storage.get_city(chat_id)
+        await update.effective_message.reply_text(
+            f"Your current city is {city_label}. To change it, use: /city city name"
+        )
+        return
+
+    matches = await asyncio.to_thread(find_cities, phrase)
+    if not matches:
+        await update.effective_message.reply_text(
+            "I couldn't find any city with that name on Ingresso.com. Double-check "
+            "the spelling and try again."
+        )
+        return
+
+    if len(matches) == 1:
+        city = matches[0]
+        await storage.set_city(chat_id, city['urlKey'], f"{city['name']} - {city['uf']}")
+        await update.effective_message.reply_text(
+            f"Got it, your city is now set to {city['name']} - {city['uf']}. "
+            "Searches and alerts will use this city from now on."
+        )
+        return
+
+    context.chat_data['pending_cities'] = matches
+    buttons = [
+        [InlineKeyboardButton(f"{c['name']} - {c['uf']}", callback_data=f"city:{i}")]
+        for i, c in enumerate(matches)
+    ]
+    buttons.append(CANCEL_BUTTON_ROW)
+    await update.effective_message.reply_text(
+        "I found more than one city with that name. Pick the one you meant:",
+        reply_markup=InlineKeyboardMarkup(buttons),
+    )
 
 
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -339,10 +387,27 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return
         await storage.add_alert(chat_id, movie['title'], movie['urlKey'])
+        _, city_label = await storage.get_city(chat_id)
         await query.edit_message_text(
-            f"Alert created for *{movie['title']}*. I'll check periodically, and "
-            "as soon as showtimes are available, you'll get a notification right here.",
+            f"Alert created for *{movie['title']}* in {city_label}. I'll check "
+            "periodically, and as soon as showtimes are available, you'll get a "
+            "notification right here.",
             parse_mode='Markdown',
+        )
+
+    elif data.startswith('city:'):
+        idx = int(data.split(':', 1)[1])
+        candidates = context.chat_data.get('pending_cities') or []
+        if idx >= len(candidates):
+            await query.edit_message_text(
+                "That city list isn't valid anymore. Send /city <name> again."
+            )
+            return
+        city = candidates[idx]
+        await storage.set_city(chat_id, city['urlKey'], f"{city['name']} - {city['uf']}")
+        await query.edit_message_text(
+            f"Got it, your city is now set to {city['name']} - {city['uf']}. "
+            "Searches and alerts will use this city from now on."
         )
 
     elif data.startswith('alert_cancel:'):
@@ -359,5 +424,6 @@ def register(application: Application):
     application.add_handler(CommandHandler('help', cmd_help))
     application.add_handler(CommandHandler('alert', cmd_alert))
     application.add_handler(CommandHandler('alerts', cmd_alerts))
+    application.add_handler(CommandHandler('city', cmd_city))
     application.add_handler(CallbackQueryHandler(handle_callback))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
