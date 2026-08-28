@@ -1,44 +1,43 @@
 # movie-ticket-monitor
 
-Bot do Telegram que busca sessões de cinema no Ingresso.com e pode monitorar
-um filme até ele abrir sessão, avisando automaticamente quando isso acontece.
-Inclui também um notebook (`teste.ipynb`) pra testar a busca manualmente,
-sem precisar do Telegram.
+Telegram bot that searches for movie showtimes on Ingresso.com and can
+monitor a movie until it opens a showtime, automatically notifying you when
+that happens.
 
-## Sumário
+## Table of contents
 
-- [Visão geral](#visão-geral)
-- [Arquitetura](#arquitetura)
-- [Como funciona (fluxos)](#como-funciona-fluxos)
-- [Estrutura de arquivos](#estrutura-de-arquivos)
-- [Requisitos e onde baixar](#requisitos-e-onde-baixar)
-- [Arquivos que não são versionados (segurança)](#arquivos-que-não-são-versionados-segurança)
-- [Passo a passo para rodar em casa](#passo-a-passo-para-rodar-em-casa)
-- [Parâmetros configuráveis](#parâmetros-configuráveis)
-- [Comandos do bot](#comandos-do-bot)
-- [Operação do dia a dia](#operação-do-dia-a-dia)
-- [Notebook de teste](#notebook-de-teste)
+- [Overview](#overview)
+- [Architecture](#architecture)
+- [How it works (flows)](#how-it-works-flows)
+- [File structure](#file-structure)
+- [Requirements and where to download them](#requirements-and-where-to-download-them)
+- [Files that aren't version-controlled (security)](#files-that-arent-version-controlled-security)
+- [Step-by-step to run it at home](#step-by-step-to-run-it-at-home)
+- [Configurable parameters](#configurable-parameters)
+- [Bot commands](#bot-commands)
+- [Day-to-day operation](#day-to-day-operation)
 
-## Visão geral
+## Overview
 
-Manda o nome de um filme pro bot e ele devolve as datas com sessão (a partir
-de hoje, em ordem crescente); escolhendo uma data, ele lista os cinemas e
-horários. Se o filme ainda não tiver nenhuma sessão (pré-venda ou ainda não
-estreou), dá pra pedir `/alerta <filme>` — o bot guarda esse pedido e fica
-verificando em segundo plano, avisando no chat assim que abrir.
+Send the bot a movie name and it returns the dates with showtimes (from
+today onward, in ascending order); picking a date lists the theaters and
+showtimes. If the movie doesn't have any showtime yet (presale or not
+released yet), you can ask for `/alerta <movie>` — the bot stores that
+request and keeps checking in the background, notifying you in the chat as
+soon as it opens.
 
-O acesso é restrito por uma lista de usuários autorizados (`TELEGRAM_ALLOWED_USER_IDS`
-no `.env`), então mesmo que alguém encontre o bot, não consegue usá-lo.
+Access is restricted by a list of authorized users (`TELEGRAM_ALLOWED_USER_IDS`
+in `.env`), so even if someone finds the bot, they can't use it.
 
-## Arquitetura
+## Architecture
 
 ```
 Telegram  <-- long polling -->  main.py
                                    |
-                                   |-- registra os handlers ---> bot/handlers.py
-                                   |-- registra o job periódico -> bot/monitor.py
+                                   |-- registers handlers -----> bot/handlers.py
+                                   |-- registers periodic job -> bot/monitor.py
                                    |
-bot/handlers.py  ---------------> bot/ingresso.py  ---------> API do Ingresso.com
+bot/handlers.py  ---------------> bot/ingresso.py  ---------> Ingresso.com API
       |                                 |                      + Playwright/Chromium
       |                                 |
       +----> bot/storage.py <-----------+
@@ -47,125 +46,120 @@ bot/handlers.py  ---------------> bot/ingresso.py  ---------> API do Ingresso.co
            data/alerts.json
 ```
 
-- **`main.py`** — ponto de entrada. Lê o `.env`, monta a aplicação do
-  `python-telegram-bot`, registra os comandos/callbacks (`bot/handlers.py`) e
-  o job periódico de alertas (`bot/monitor.py`), e começa o long polling
-  (o bot puxa as mensagens do Telegram; nenhuma porta fica exposta).
-- **`bot/ingresso.py`** — fonte de verdade da lógica de busca. Consulta a API
-  pública do Ingresso.com pra achar o filme, e usa o Playwright (Chromium
-  headless) pra abrir a página do filme e capturar, via interceptação de
-  requisições de rede, as URLs de sessão de cada data disponível. Não tem
-  nenhuma dependência do Telegram — por isso o `teste.ipynb` também importa
-  direto daqui.
-- **`bot/handlers.py`** — comandos e botões do Telegram (`/start`, `/help`,
-  `/alerta`, `/alertas`, texto livre, cliques em botão). É a camada que
-  decide *o que* o bot responde e formata as mensagens; não sabe nada sobre
-  como a busca é feita internamente.
-- **`bot/storage.py`** — persistência simples dos alertas em
-  `data/alerts.json`, com um lock (`asyncio.Lock`) pra evitar corrida entre
-  o job de monitoramento e os comandos do usuário, já que os dois rodam no
-  mesmo processo.
-- **`bot/monitor.py`** — roda periodicamente (intervalo configurável) e, pra
-  cada alerta pendente, checa se já existe sessão disponível. Se existir,
-  manda uma mensagem no chat e marca o alerta como resolvido (é um aviso
-  único, não fica repetindo).
-- **`teste.ipynb`** — notebook Jupyter que importa `bot/ingresso.py` e roda o
-  mesmo fluxo de busca de forma interativa, via `input()`, sem precisar de
-  Telegram nem Docker. Útil pra testar rapidamente se a busca ainda está
-  funcionando (o site pode mudar a estrutura a qualquer momento).
+- **`main.py`** — entry point. Reads `.env`, builds the `python-telegram-bot`
+  application, registers the commands/callbacks (`bot/handlers.py`) and the
+  periodic alert job (`bot/monitor.py`), and starts long polling (the bot
+  pulls messages from Telegram; no port is ever exposed).
+- **`bot/ingresso.py`** — source of truth for the search logic. Queries
+  Ingresso.com's public API to find the movie, and uses Playwright (headless
+  Chromium) to open the movie page and capture, by intercepting network
+  requests, the showtime URLs for each available date. It has no dependency
+  on Telegram at all.
+- **`bot/handlers.py`** — Telegram commands and buttons (`/start`, `/help`,
+  `/alerta`, `/alertas`, free text, button taps). This is the layer that
+  decides *what* the bot replies and formats the messages; it knows nothing
+  about how the search is done internally.
+- **`bot/storage.py`** — simple alert persistence in `data/alerts.json`, with
+  a lock (`asyncio.Lock`) to avoid a race between the monitoring job and the
+  user's commands, since both run in the same process.
+- **`bot/monitor.py`** — runs periodically (configurable interval) and, for
+  each pending alert, checks whether a showtime is already available. If so,
+  it sends a message in the chat and marks the alert as resolved (it's a
+  one-time notification, it doesn't keep repeating).
 
-## Como funciona (fluxos)
+## How it works (flows)
 
-**Busca (texto livre ou uma data já com sessão em `/alerta`)**
-1. Usuário manda o nome do filme.
-2. `find_movies()` busca na API do Ingresso.com e filtra pelos títulos que
-   batem com todas as palavras digitadas. Se houver mais de um resultado,
-   o bot mostra botões pra escolher.
-3. `find_sessions()` abre a página do filme com Playwright, percorre o
-   seletor de datas do site e captura as URLs de sessão de cada dia,
-   filtrando só as datas de hoje em diante e ordenando de forma crescente.
-4. O bot mostra um botão por data disponível. Ao escolher uma,
-   `fetch_theaters()` busca a API daquela data e o bot lista cinema, sala,
-   tipo de sessão e horário.
+**Search (free text, or a date that already has showtimes in `/alerta`)**
+1. User sends the movie name.
+2. `find_movies()` searches Ingresso.com's API and filters titles that match
+   every word typed. If there's more than one result, the bot shows buttons
+   to choose from.
+3. `find_sessions()` opens the movie page with Playwright, goes through the
+   site's date selector and captures the showtime URLs for each day,
+   filtering to dates from today onward and sorting them in ascending order.
+4. The bot shows one button per available date. When one is picked,
+   `fetch_theaters()` queries that date's API and the bot lists theater,
+   room, showtime type and time.
 
-**Alerta (`/alerta <filme>`)**
-1. Mesma busca acima. Se já existir sessão, o bot mostra as datas (não cria
-   alerta redundante).
-2. Se não existir nenhuma sessão ainda, o pedido é salvo em
-   `data/alerts.json` com status `pending`.
-3. A cada `ALERT_CHECK_INTERVAL_MINUTES` minutos, `bot/monitor.py` roda
-   `find_sessions()` de novo pra cada alerta pendente. Assim que encontrar
-   sessão, manda a mensagem no chat e marca o alerta como `resolved`.
+**Alert (`/alerta <movie>`)**
+1. Same search as above. If a showtime already exists, the bot shows the
+   dates (it won't create a redundant alert).
+2. If there's no showtime yet, the request is saved to `data/alerts.json`
+   with status `pending`.
+3. Every `ALERT_CHECK_INTERVAL_MINUTES` minutes, `bot/monitor.py` runs
+   `find_sessions()` again for each pending alert. As soon as it finds a
+   showtime, it sends the message in the chat and marks the alert as
+   `resolved`.
 
-## Estrutura de arquivos
+## File structure
 
 ```
 movie-ticket-monitor/
 ├── bot/
 │   ├── __init__.py
-│   ├── ingresso.py       # busca de filme e sessões (Playwright + API pública)
-│   ├── storage.py        # persistência dos alertas (data/alerts.json)
-│   ├── monitor.py        # job periódico que checa os alertas pendentes
-│   └── handlers.py       # comandos e botões do Telegram
+│   ├── ingresso.py       # movie/showtime search (Playwright + public API)
+│   ├── storage.py        # alert persistence (data/alerts.json)
+│   ├── monitor.py        # periodic job that checks pending alerts
+│   └── handlers.py       # Telegram commands and buttons
 ├── data/
-│   ├── .gitkeep           # mantém a pasta versionada mesmo vazia
-│   └── alerts.json         # criado em tempo de execução (NÃO versionado)
-├── main.py                  # ponto de entrada do bot
-├── teste.ipynb                # notebook de teste manual da busca
-├── requirements.txt             # dependências Python
-├── Dockerfile                     # imagem do bot
-├── docker-compose.yml               # orquestra o container + volume de dados
-├── .env.example                       # modelo das variáveis de ambiente
-├── .env                                 # suas variáveis reais (NÃO versionado)
+│   ├── .gitkeep           # keeps the folder tracked even when empty
+│   └── alerts.json         # created at runtime (NOT version-controlled)
+├── main.py                  # bot entry point
+├── requirements.txt           # Python dependencies
+├── Dockerfile                   # bot image
+├── docker-compose.yml             # orchestrates the container + data volume
+├── .env.example                     # template for the environment variables
+├── .env                               # your real variables (NOT version-controlled)
 ├── .gitignore
 └── README.md
 ```
 
-## Requisitos e onde baixar
+## Requirements and where to download them
 
-Baixe sempre pelas fontes oficiais abaixo:
+Always download from the official sources below:
 
-| Requisito | Necessário para | Onde baixar (oficial) |
+| Requirement | Needed for | Where to download (official) |
 |---|---|---|
-| Python 3.13+ | Rodar local (sem Docker), ou usar o `teste.ipynb` | https://www.python.org/downloads/ |
-| Docker Desktop | Rodar o bot em container (recomendado) | https://www.docker.com/products/docker-desktop/ |
-| WSL2 (só Windows, exigido pelo Docker Desktop) | Backend do Docker Desktop no Windows | https://learn.microsoft.com/pt-br/windows/wsl/install (ou `wsl --install` no PowerShell como administrador) |
-| Conta e app do Telegram | Criar/falar com o bot | https://telegram.org/ |
-| @BotFather | Criar o bot e pegar o token | https://t.me/BotFather (bot oficial do Telegram, dentro do próprio app) |
-| Git (opcional) | Clonar/versionar o projeto | https://git-scm.com/downloads |
+| Python 3.13+ | Running locally, without Docker | https://www.python.org/downloads/ |
+| Docker Desktop | Running the bot in a container (recommended) | https://www.docker.com/products/docker-desktop/ |
+| WSL2 (Windows only, required by Docker Desktop) | Docker Desktop's backend on Windows | https://learn.microsoft.com/windows/wsl/install (or run `wsl --install` in PowerShell as Administrator) |
+| Telegram account and app | Creating/talking to the bot | https://telegram.org/ |
+| @BotFather | Creating the bot and getting the token | https://t.me/BotFather (Telegram's official bot, inside the app itself) |
+| Git (optional) | Cloning/version-controlling the project | https://git-scm.com/downloads |
 
-As dependências Python (`requirements.txt`) são instaladas via `pip` e vêm
-todas do [PyPI](https://pypi.org/) oficial — não precisa baixar nada manual:
+The Python dependencies (`requirements.txt`) are installed via `pip` and all
+come from the official [PyPI](https://pypi.org/) — no manual download
+needed:
 
-- `playwright` — controla o Chromium headless que abre a página do filme.
-- `requests` — chamadas HTTP pra API do Ingresso.com.
-- `python-telegram-bot[job-queue]` — biblioteca oficial recomendada pra bots
-  do Telegram em Python, com suporte a job periódico.
-- `python-dotenv` — carrega o `.env` quando roda sem Docker.
+- `playwright` — drives the headless Chromium that opens the movie page.
+- `requests` — HTTP calls to the Ingresso.com API.
+- `python-telegram-bot[job-queue]` — the officially recommended library for
+  Telegram bots in Python, with periodic-job support.
+- `python-dotenv` — loads `.env` when running without Docker.
 
-Se for rodar **sem Docker**, depois de instalar as dependências também é
-preciso baixar o navegador do Playwright (não é um download manual, é um
-comando que baixa direto dos servidores oficiais do Playwright):
+If you're running **without Docker**, after installing the dependencies you
+also need to download Playwright's browser (not a manual download, it's a
+command that fetches it straight from Playwright's official servers):
 
 ```powershell
 python -m playwright install chromium
 ```
 
-## Arquivos que não são versionados (segurança)
+## Files that aren't version-controlled (security)
 
-Esses arquivos existem no projeto rodando, mas **não vão pro git** (estão no
-`.gitignore`) porque contêm segredos ou dados gerados em tempo de execução.
-Cada pessoa que for rodar o bot precisa criar o próprio `.env` — ele nunca é
-compartilhado nem sobe pro repositório.
+These files exist in a running instance of the project, but **don't go into
+git** (they're in `.gitignore`) because they hold secrets or data generated
+at runtime. Each person running the bot needs to create their own `.env` —
+it's never shared and never pushed to the repository.
 
-| Arquivo | Por quê não versionar | Como criar |
+| File | Why it isn't version-controlled | How to create it |
 |---|---|---|
-| `.env` | Contém o token do bot — quem tiver esse arquivo controla o bot | Copie `.env.example` e preencha (veja o passo a passo abaixo) |
-| `data/alerts.json` | Gerado automaticamente com os alertas de cada instalação; não faz sentido compartilhar entre ambientes diferentes | Criado sozinho na primeira vez que um alerta é salvo |
-| `__pycache__/`, `*.pyc` | Bytecode compilado do Python, específico de cada máquina | Gerado automaticamente ao rodar |
-| `.venv/`, `venv/` | Ambiente virtual Python local | Criado por você se optar por usar `venv` |
+| `.env` | Holds the bot token — whoever has this file controls the bot | Copy `.env.example` and fill it in (see the step-by-step below) |
+| `data/alerts.json` | Auto-generated with each installation's alerts; doesn't make sense to share across different environments | Created automatically the first time an alert is saved |
+| `__pycache__/`, `*.pyc` | Compiled Python bytecode, specific to each machine | Generated automatically when running |
+| `.venv/`, `venv/` | Local Python virtual environment | Created by you if you choose to use `venv` |
 
-### Estrutura do `.env`
+### `.env` structure
 
 ```dotenv
 TELEGRAM_BOT_TOKEN=
@@ -173,70 +167,71 @@ TELEGRAM_ALLOWED_USER_IDS=
 ALERT_CHECK_INTERVAL_MINUTES=30
 ```
 
-- `TELEGRAM_BOT_TOKEN` — token que o @BotFather te dá ao criar o bot.
-  **Nunca** compartilhe esse valor nem cole em lugar público (chat, print,
-  issue do GitHub etc.) — quem tiver o token controla o bot inteiro.
-- `TELEGRAM_ALLOWED_USER_IDS` — ver a tabela de [parâmetros](#parâmetros-configuráveis)
-  abaixo.
-- `ALERT_CHECK_INTERVAL_MINUTES` — idem.
+- `TELEGRAM_BOT_TOKEN` — the token @BotFather gives you when you create the
+  bot. **Never** share this value or paste it anywhere public (chat,
+  screenshot, GitHub issue, etc.) — whoever has the token controls the whole
+  bot.
+- `TELEGRAM_ALLOWED_USER_IDS` — see the [parameters](#configurable-parameters)
+  table below.
+- `ALERT_CHECK_INTERVAL_MINUTES` — same.
 
-## Passo a passo para rodar em casa
+## Step-by-step to run it at home
 
-### 1. Instalar os requisitos
+### 1. Install the requirements
 
-- Instale o [Docker Desktop](https://www.docker.com/products/docker-desktop/)
-  (recomendado) **ou** o [Python 3.13+](https://www.python.org/downloads/)
-  se preferir rodar sem Docker.
-- No Windows, o Docker Desktop pede o WSL2. Se ele reclamar de
-  "virtualisation support wasn't detected" ao abrir, abra o **PowerShell
-  como Administrador** e rode `wsl --install`, depois reinicie o
-  computador.
+- Install [Docker Desktop](https://www.docker.com/products/docker-desktop/)
+  (recommended) **or** [Python 3.13+](https://www.python.org/downloads/) if
+  you'd rather run it without Docker.
+- On Windows, Docker Desktop requires WSL2. If it complains about
+  "virtualisation support wasn't detected" when it starts, open
+  **PowerShell as Administrator** and run `wsl --install`, then restart the
+  computer.
 
-### 2. Criar o bot no Telegram
+### 2. Create the bot on Telegram
 
-1. Abra o Telegram e fale com [@BotFather](https://t.me/BotFather).
-2. Mande `/newbot`, escolha um nome e um username (precisa terminar em `bot`).
-3. Guarde o token que ele devolver — você vai usar no `.env`.
+1. Open Telegram and talk to [@BotFather](https://t.me/BotFather).
+2. Send `/newbot`, pick a name and a username (it needs to end in `bot`).
+3. Save the token it gives you back — you'll use it in `.env`.
 
-### 3. Descobrir seu ID de usuário do Telegram
+### 3. Find your Telegram user ID
 
-Fale com [@userinfobot](https://t.me/userinfobot) (ou qualquer bot
-equivalente) — ele te devolve seu ID numérico. Você vai usar esse número
-pra travar o bot só pro seu uso.
+Talk to [@userinfobot](https://t.me/userinfobot) (or any equivalent bot) —
+it returns your numeric ID. You'll use that number to lock the bot down to
+your own use.
 
-### 4. Baixar o projeto
+### 4. Get the project
 
-Copie a pasta `movie-ticket-monitor` pra máquina onde o bot vai rodar (ou
-clone via Git, se o projeto estiver num repositório remoto).
+Copy the `movie-ticket-monitor` folder to the machine where the bot will
+run (or clone it via Git, if the project lives in a remote repository).
 
-### 5. Criar o `.env`
+### 5. Create the `.env`
 
-Copie o modelo e preencha:
+Copy the template and fill it in:
 
 ```powershell
 copy .env.example .env
 ```
 
-Edite o `.env` com o token do passo 2 e seu ID do passo 3:
+Edit `.env` with the token from step 2 and your ID from step 3:
 
 ```dotenv
-TELEGRAM_BOT_TOKEN=coloque_o_token_aqui
-TELEGRAM_ALLOWED_USER_IDS=coloque_seu_id_aqui
+TELEGRAM_BOT_TOKEN=put_the_token_here
+TELEGRAM_ALLOWED_USER_IDS=put_your_id_here
 ALERT_CHECK_INTERVAL_MINUTES=30
 ```
 
-### 6. Subir o bot
+### 6. Start the bot
 
-**Opção recomendada — Docker:**
+**Recommended option — Docker:**
 
 ```powershell
 docker compose up -d --build
 ```
 
-O `docker-compose.yml` monta `./data` como volume, então os alertas
-sobrevivem a rebuilds/restarts do container.
+`docker-compose.yml` mounts `./data` as a volume, so alerts survive
+container rebuilds/restarts.
 
-**Alternativa — sem Docker:**
+**Alternative — without Docker:**
 
 ```powershell
 python -m pip install -r requirements.txt
@@ -244,60 +239,47 @@ python -m playwright install chromium
 python main.py
 ```
 
-### 7. Testar
+### 7. Test it
 
-No Telegram, mande `/start` pro seu bot, depois `/help` pra ver os
-comandos, e o nome de um filme em cartaz pra conferir a busca.
+On Telegram, send `/start` to your bot, then `/help` to see the commands,
+and the name of a movie currently in theaters to check the search.
 
-## Parâmetros configuráveis
+## Configurable parameters
 
-Todos ficam no `.env` (ou nas variáveis de ambiente do container, se preferir
-configurar direto no `docker-compose.yml`):
+All of them live in `.env` (or in the container's environment variables, if
+you'd rather configure them directly in `docker-compose.yml`):
 
-| Variável | O que faz | Padrão | Exemplo |
+| Variable | What it does | Default | Example |
 |---|---|---|---|
-| `TELEGRAM_BOT_TOKEN` | Token do bot, dado pelo @BotFather | *(obrigatório, sem padrão)* | `8926034628:AAFUJg...` |
-| `TELEGRAM_ALLOWED_USER_IDS` | IDs de usuário do Telegram autorizados a usar o bot, separados por vírgula. **Se ficar vazio, qualquer pessoa que achar o bot pode usá-lo** (cada busca abre um Chromium headless, então isso tem custo de recursos) | *(vazio = sem restrição)* | `383108252` ou `383108252,111222333` |
-| `ALERT_CHECK_INTERVAL_MINUTES` | De quantos em quantos minutos o job de alertas verifica se abriram sessões novas | `30` | `10` (checagem mais frequente) |
+| `TELEGRAM_BOT_TOKEN` | Bot token, given by @BotFather | *(required, no default)* | `8926034628:AAFUJg...` |
+| `TELEGRAM_ALLOWED_USER_IDS` | Telegram user IDs authorized to use the bot, comma-separated. **If left empty, anyone who finds the bot can use it** (each search spins up a headless Chromium, so this has a resource cost) | *(empty = no restriction)* | `383108252` or `383108252,111222333` |
+| `ALERT_CHECK_INTERVAL_MINUTES` | How often (in minutes) the alert job checks whether new showtimes have opened | `30` | `10` (more frequent checks) |
 
-Outros pontos que dá pra ajustar direto no código, se precisar:
+Other things you can adjust directly in the code, if needed:
 
-- **Cidade da busca**: `get_sessions()`/`find_sessions()` em
-  `bot/ingresso.py` recebem `city='sao-paulo'` como padrão — é o slug da
-  cidade usado na URL do Ingresso.com. Pra outra cidade, troque esse valor
-  (ou exponha como parâmetro do comando, se quiser evoluir o bot).
-- **Limite de resultados da busca de filme**: `search_movie(query, limit=10)`
-  em `bot/ingresso.py`.
+- **Search city**: `get_sessions()`/`find_sessions()` in `bot/ingresso.py`
+  take `city='sao-paulo'` as the default — it's the city slug used in
+  Ingresso.com's URL. For a different city, change that value (or expose it
+  as a command parameter, if you want to evolve the bot further).
+- **Movie search result limit**: `search_movie(query, limit=10)` in
+  `bot/ingresso.py`.
 
-## Comandos do bot
+## Bot commands
 
-- Manda o nome de um filme (texto livre) — busca as sessões.
-- `/alerta <filme>` — cria um alerta de monitoramento (ou mostra as datas se
-  o filme já tiver sessão).
-- `/alertas` — lista seus alertas ativos, com botão pra cancelar.
-- `/help` — mostra a lista de comandos.
-- `/start` — mensagem de boas-vindas.
+- Send a movie name (free text) — searches for showtimes.
+- `/alerta <movie>` — creates a monitoring alert (or shows the dates if the
+  movie already has showtimes).
+- `/alertas` — lists your active alerts, with a button to cancel each one.
+- `/help` — shows the list of commands.
+- `/start` — welcome message.
 
-## Operação do dia a dia
+## Day-to-day operation
 
-Com o bot rodando via Docker:
-
-```powershell
-docker compose logs -f          # acompanhar os logs em tempo real
-docker compose restart          # reiniciar o bot (ex: depois de mudar o .env)
-docker compose up -d --build    # reconstruir e subir depois de mudar o código
-docker compose down             # parar e remover o container (os dados em ./data permanecem)
-```
-
-## Notebook de teste
-
-`teste.ipynb` importa direto de `bot/ingresso.py`, então serve como um jeito
-rápido de testar a busca sem precisar do Telegram nem do Docker:
+With the bot running via Docker:
 
 ```powershell
-python -m pip install -r requirements.txt
-python -m playwright install chromium
+docker compose logs -f          # follow the logs in real time
+docker compose restart          # restart the bot (e.g. after changing .env)
+docker compose up -d --build    # rebuild and restart after changing the code
+docker compose down             # stop and remove the container (data in ./data is kept)
 ```
-
-Depois é só rodar a célula e responder aos `input()` (nome do filme, e depois
-o número da data escolhida).
