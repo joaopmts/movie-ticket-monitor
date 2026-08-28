@@ -147,17 +147,19 @@ async def _resolve_for_alert(chat_id, context: ContextTypes.DEFAULT_TYPE, movie)
         )
         return
 
-    existing = await storage.find_pending_by_url_key(chat_id, movie['urlKey'])
+    existing = await storage.find_pending_by_url_key(chat_id, movie['urlKey'], city_url_key)
     if existing:
+        existing_city = existing.get('city_label', storage.DEFAULT_CITY_LABEL)
         await context.bot.send_message(
             chat_id,
-            f"You already have an alert in progress for *{movie['title']}*. As soon "
-            "as showtimes open, I'll let you know here — no need to create another one.",
+            f"You already have an alert in progress for *{movie['title']}* in "
+            f"{existing_city}. As soon as showtimes open, I'll let you know "
+            "here — no need to create another one.",
             parse_mode='Markdown',
         )
         return
 
-    await storage.add_alert(chat_id, movie['title'], movie['urlKey'])
+    await storage.add_alert(chat_id, movie['title'], movie['urlKey'], city_url_key, city_label)
     await context.bot.send_message(
         chat_id,
         f"Alert created for *{movie['title']}* in {city_label}. I'll check "
@@ -253,12 +255,13 @@ async def cmd_alerts(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
     for alert in pending:
+        city_label = alert.get('city_label', storage.DEFAULT_CITY_LABEL)
         keyboard = InlineKeyboardMarkup(
             [[InlineKeyboardButton("Cancel this alert", callback_data=f"alert_cancel:{alert['id']}")]]
         )
         await update.effective_message.reply_text(
-            f"Active alert for {alert['movie_title']}. As soon as showtimes are "
-            "available, I'll let you know here.",
+            f"Active alert for {alert['movie_title']} in {city_label}. As soon as "
+            "showtimes are available, I'll let you know here.",
             reply_markup=keyboard,
         )
 
@@ -378,16 +381,17 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "the name again and I'll ask if you want to create the alert."
             )
             return
-        existing = await storage.find_pending_by_url_key(chat_id, movie['urlKey'])
+        city_url_key, city_label = await storage.get_city(chat_id)
+        existing = await storage.find_pending_by_url_key(chat_id, movie['urlKey'], city_url_key)
         if existing:
+            existing_city = existing.get('city_label', storage.DEFAULT_CITY_LABEL)
             await query.edit_message_text(
-                f"You already have an alert in progress for *{movie['title']}*. As "
-                "soon as showtimes open, I'll let you know here.",
+                f"You already have an alert in progress for *{movie['title']}* in "
+                f"{existing_city}. As soon as showtimes open, I'll let you know here.",
                 parse_mode='Markdown',
             )
             return
-        await storage.add_alert(chat_id, movie['title'], movie['urlKey'])
-        _, city_label = await storage.get_city(chat_id)
+        await storage.add_alert(chat_id, movie['title'], movie['urlKey'], city_url_key, city_label)
         await query.edit_message_text(
             f"Alert created for *{movie['title']}* in {city_label}. I'll check "
             "periodically, and as soon as showtimes are available, you'll get a "

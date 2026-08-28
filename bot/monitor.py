@@ -11,10 +11,10 @@ from .ingresso import find_sessions
 logger = logging.getLogger(__name__)
 
 
-def _format_dates_message(movie_title, dated):
+def _format_dates_message(movie_title, city_label, dated):
     lines = [
-        f"Good news: showtimes just opened for *{movie_title}*. This alert is now "
-        "complete and I won't check this movie anymore.",
+        f"Good news: showtimes just opened for *{movie_title}* in {city_label}. "
+        "This alert is now complete and I won't check this movie anymore.",
         "",
         "Available dates:",
     ]
@@ -31,8 +31,9 @@ def _format_dates_message(movie_title, dated):
 async def check_alerts(context: ContextTypes.DEFAULT_TYPE):
     pending = await storage.list_pending()
     for alert in pending:
+        city_url_key = alert.get('city_url_key', storage.DEFAULT_CITY_URL_KEY)
+        city_label = alert.get('city_label', storage.DEFAULT_CITY_LABEL)
         try:
-            city_url_key, _ = await storage.get_city(alert['chat_id'])
             dated = await asyncio.to_thread(find_sessions, alert['url_key'], city_url_key)
         except Exception:
             logger.exception("Failed to check alert %s (%s)", alert['id'], alert['url_key'])
@@ -44,7 +45,7 @@ async def check_alerts(context: ContextTypes.DEFAULT_TYPE):
         try:
             await context.bot.send_message(
                 chat_id=alert['chat_id'],
-                text=_format_dates_message(alert['movie_title'], dated),
+                text=_format_dates_message(alert['movie_title'], city_label, dated),
                 parse_mode='Markdown',
             )
         except Exception:

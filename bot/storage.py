@@ -30,7 +30,7 @@ def _save(alerts):
         json.dump(alerts, f, ensure_ascii=False, indent=2)
 
 
-async def add_alert(chat_id, movie_title, url_key):
+async def add_alert(chat_id, movie_title, url_key, city_url_key, city_label):
     async with _lock:
         alerts = _load()
         alert = {
@@ -38,6 +38,8 @@ async def add_alert(chat_id, movie_title, url_key):
             'chat_id': chat_id,
             'movie_title': movie_title,
             'url_key': url_key,
+            'city_url_key': city_url_key,
+            'city_label': city_label,
             'created_at': datetime.now(timezone.utc).isoformat(),
             'status': 'pending',
         }
@@ -71,9 +73,22 @@ async def cancel_alert(alert_id):
         _save(alerts)
 
 
-async def find_pending_by_url_key(chat_id, url_key):
+async def find_pending_by_url_key(chat_id, url_key, city_url_key):
+    """Finds a pending alert for the same chat, movie AND city.
+
+    Alerts for the same movie in different cities are independent — this
+    only counts as a duplicate when the city also matches (falling back to
+    the default city for older alerts saved before city pinning existed).
+    """
     pending = await list_pending(chat_id=chat_id)
-    return next((a for a in pending if a['url_key'] == url_key), None)
+    return next(
+        (
+            a for a in pending
+            if a['url_key'] == url_key
+            and a.get('city_url_key', DEFAULT_CITY_URL_KEY) == city_url_key
+        ),
+        None,
+    )
 
 
 def _load_prefs():
